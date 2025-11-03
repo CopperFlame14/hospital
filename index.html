@@ -233,6 +233,48 @@
             font-style: italic;
         }
 
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-content h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
         @media (max-width: 968px) {
             .main-grid {
                 grid-template-columns: 1fr;
@@ -314,6 +356,34 @@
                 <div class="empty-state">No regular patients</div>
             </div>
         </div>
+
+        <!-- Reschedule Modal -->
+        <div id="rescheduleModal" class="modal">
+            <div class="modal-content">
+                <h3>📅 Reschedule Appointment</h3>
+                <div class="form-group">
+                    <label for="rescheduleDate">New Date</label>
+                    <input type="date" id="rescheduleDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="rescheduleTime">New Time</label>
+                    <input type="time" id="rescheduleTime" required>
+                </div>
+                <div class="form-group">
+                    <label for="rescheduleType">Patient Type</label>
+                    <select id="rescheduleType" required>
+                        <option value="regular">Regular Appointment</option>
+                        <option value="critical">Emergency - Critical</option>
+                        <option value="serious">Emergency - Serious</option>
+                        <option value="mild">Emergency - Mild</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn-secondary" onclick="closeRescheduleModal()">Cancel</button>
+                    <button onclick="confirmReschedule()">Confirm Reschedule</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -326,7 +396,7 @@
                 this.patientIdCounter = 1;
             }
 
-            addPatient(name, age, type, symptoms) {
+            addPatient(name, age, type, symptoms, scheduledDate = null) {
                 const patient = {
                     id: this.patientIdCounter++,
                     name,
@@ -334,6 +404,7 @@
                     type,
                     symptoms,
                     arrivalTime: new Date(),
+                    scheduledDate: scheduledDate || new Date(),
                     waitingTime: 0
                 };
 
@@ -377,13 +448,13 @@
                 this.updateWaitingTimes();
             }
 
-            reschedulePatient(id, newType) {
+            reschedulePatient(id, newType, newDate) {
                 let patient = this.emergencyQueue.find(p => p.id === id) || 
                              this.regularQueue.find(p => p.id === id);
                 
                 if (patient) {
                     this.cancelPatient(id);
-                    this.addPatient(patient.name, patient.age, newType, patient.symptoms);
+                    this.addPatient(patient.name, patient.age, newType, patient.symptoms, newDate);
                 }
             }
 
@@ -430,60 +501,70 @@
 
         function renderEmergencyQueue() {
             const container = document.getElementById('emergencyQueue');
+            console.log('Rendering emergency queue, length:', queue.emergencyQueue.length);
             
             if (queue.emergencyQueue.length === 0) {
                 container.innerHTML = '<div class="empty-state">No emergency patients</div>';
                 return;
             }
 
-            container.innerHTML = queue.emergencyQueue.map(patient => `
-                <div class="patient-card priority-${patient.type}">
-                    <div class="patient-info">
-                        <div class="patient-name">
-                            <span class="priority-badge">${patient.type.toUpperCase()}</span>
-                            ${patient.name} (${patient.age}yo)
+            let html = '';
+            queue.emergencyQueue.forEach(patient => {
+                html += `
+                    <div class="patient-card priority-${patient.type}">
+                        <div class="patient-info">
+                            <div class="patient-name">
+                                <span class="priority-badge">${patient.type.toUpperCase()}</span>
+                                ${patient.name} (${patient.age}yo)
+                            </div>
+                            <div class="patient-details">
+                                ${patient.symptoms} | 
+                                <span class="waiting-time">Wait: ${patient.waitingTime} min</span>
+                            </div>
                         </div>
-                        <div class="patient-details">
-                            ${patient.symptoms} | 
-                            <span class="waiting-time">Wait: ${patient.waitingTime} min</span>
+                        <div class="action-buttons">
+                            <button class="btn-small btn-serve" onclick="servePatient(${patient.id})">Serve</button>
+                            <button class="btn-small btn-reschedule" onclick="reschedule(${patient.id})">Reschedule</button>
+                            <button class="btn-small btn-cancel" onclick="cancelPatient(${patient.id})">Cancel</button>
                         </div>
                     </div>
-                    <div class="action-buttons">
-                        <button class="btn-small btn-serve" onclick="servePatient(${patient.id})">Serve</button>
-                        <button class="btn-small btn-reschedule" onclick="reschedule(${patient.id})">Reschedule</button>
-                        <button class="btn-small btn-cancel" onclick="cancelPatient(${patient.id})">Cancel</button>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            });
+            container.innerHTML = html;
         }
 
         function renderRegularQueue() {
             const container = document.getElementById('regularQueue');
+            console.log('Rendering regular queue, length:', queue.regularQueue.length);
             
             if (queue.regularQueue.length === 0) {
                 container.innerHTML = '<div class="empty-state">No regular patients</div>';
                 return;
             }
 
-            container.innerHTML = queue.regularQueue.map(patient => `
-                <div class="patient-card priority-regular">
-                    <div class="patient-info">
-                        <div class="patient-name">
-                            <span class="priority-badge">REGULAR</span>
-                            ${patient.name} (${patient.age}yo)
+            let html = '';
+            queue.regularQueue.forEach(patient => {
+                html += `
+                    <div class="patient-card priority-regular">
+                        <div class="patient-info">
+                            <div class="patient-name">
+                                <span class="priority-badge">REGULAR</span>
+                                ${patient.name} (${patient.age}yo)
+                            </div>
+                            <div class="patient-details">
+                                ${patient.symptoms} | 
+                                <span class="waiting-time">Wait: ${patient.waitingTime} min</span>
+                            </div>
                         </div>
-                        <div class="patient-details">
-                            ${patient.symptoms} | 
-                            <span class="waiting-time">Wait: ${patient.waitingTime} min</span>
+                        <div class="action-buttons">
+                            <button class="btn-small btn-serve" onclick="servePatient(${patient.id})">Serve</button>
+                            <button class="btn-small btn-reschedule" onclick="reschedule(${patient.id})">Reschedule</button>
+                            <button class="btn-small btn-cancel" onclick="cancelPatient(${patient.id})">Cancel</button>
                         </div>
                     </div>
-                    <div class="action-buttons">
-                        <button class="btn-small btn-serve" onclick="servePatient(${patient.id})">Serve</button>
-                        <button class="btn-small btn-reschedule" onclick="reschedule(${patient.id})">Reschedule</button>
-                        <button class="btn-small btn-cancel" onclick="cancelPatient(${patient.id})">Cancel</button>
-                    </div>
-                </div>
-            `).join('');
+                `;
+            });
+            container.innerHTML = html;
         }
 
         function updateStats() {
@@ -511,15 +592,45 @@
         }
 
         function reschedule(id) {
-            const newType = prompt('Enter new patient type:\n- regular\n- critical\n- serious\n- mild');
+            currentRescheduleId = id;
+            const patient = queue.emergencyQueue.find(p => p.id === id) || 
+                          queue.regularQueue.find(p => p.id === id);
             
-            if (newType && ['regular', 'critical', 'serious', 'mild'].includes(newType.toLowerCase())) {
-                queue.reschedulePatient(id, newType.toLowerCase());
-                renderQueues();
-            } else if (newType) {
-                alert('Invalid patient type. Please use: regular, critical, serious, or mild');
+            if (patient) {
+                // Pre-fill current values
+                const date = new Date(patient.scheduledDate);
+                document.getElementById('rescheduleDate').valueAsDate = date;
+                document.getElementById('rescheduleTime').value = date.toTimeString().slice(0, 5);
+                document.getElementById('rescheduleType').value = patient.type;
+                
+                // Show modal
+                document.getElementById('rescheduleModal').classList.add('active');
             }
         }
+
+        function closeRescheduleModal() {
+            document.getElementById('rescheduleModal').classList.remove('active');
+            currentRescheduleId = null;
+        }
+
+        function confirmReschedule() {
+            const date = document.getElementById('rescheduleDate').value;
+            const time = document.getElementById('rescheduleTime').value;
+            const type = document.getElementById('rescheduleType').value;
+            
+            if (!date || !time) {
+                alert('Please select both date and time');
+                return;
+            }
+            
+            const newDateTime = new Date(`${date}T${time}`);
+            queue.reschedulePatient(currentRescheduleId, type, newDateTime);
+            renderQueues();
+            closeRescheduleModal();
+            alert('Appointment rescheduled successfully!');
+        }
+
+        let currentRescheduleId = null;
 
         document.getElementById('appointmentForm').addEventListener('submit', (e) => {
             e.preventDefault();
